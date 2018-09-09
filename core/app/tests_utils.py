@@ -14,8 +14,8 @@ from .app_outgoing import run_outgoing_application
 ORIGINAL_SLEEP = asyncio.sleep
 
 
-async def fast_sleep(_):
-    await ORIGINAL_SLEEP(0.5)
+async def fast_sleep(time_to_sleep):
+    await ORIGINAL_SLEEP(min(time_to_sleep, 0.5))
 
 
 def async_test(func):
@@ -43,7 +43,8 @@ async def is_http_accepted_eventually():
         try:
             async with aiohttp.ClientSession() as session:
                 url = 'http://127.0.0.1:8080/'
-                await session.get(url, data='{}', timeout=1)
+                async with session.get(url, data='{}', timeout=1):
+                    pass
             return True
         except aiohttp.client_exceptions.ClientConnectorError:
             attempts += 1
@@ -60,13 +61,13 @@ async def wait_until_get_working():
                 'incoming-some-id-3', 'incoming-some-secret-3', url,
                 'GET', '{}', 'application/json',
             )
-            result = await session.get(url, headers={
+            async with session.get(url, headers={
                 'Authorization': auth,
                 'X-Forwarded-For': '1.2.3.4, 2.2.2.2',
                 'X-Forwarded-Proto': 'http',
                 'Content-Type': 'application/json',
-            }, data='{}', timeout=1)
-            content = await result.content.read()
+            }, data='{}', timeout=3) as result:
+                content = await result.content.read()
 
         if 'orderedItems' in json.loads(content):
             return True
@@ -101,14 +102,14 @@ async def fetch_all_es_data_until(condition):
 
 async def fetch_es_index_names():
     async with aiohttp.ClientSession() as session:
-        response = await session.get('http://127.0.0.1:9200/_alias')
-        return json.loads(await response.text()).keys()
+        async with session.get('http://127.0.0.1:9200/_alias') as response:
+            return json.loads(await response.text()).keys()
 
 
 async def fetch_es_index_names_with_alias():
     async with aiohttp.ClientSession() as session:
-        response = await session.get('http://127.0.0.1:9200/_alias')
-        indexes = json.loads(await response.text())
+        async with session.get('http://127.0.0.1:9200/_alias') as response:
+            indexes = json.loads(await response.text())
     return [
         index_name
         for index_name, index_details in indexes.items()
@@ -119,8 +120,8 @@ async def fetch_es_index_names_with_alias():
 async def fetch_until(url, condition):
     async def fetch_all_es_data():
         async with aiohttp.ClientSession() as session:
-            results = await session.get(url)
-            return json.loads(await results.text())
+            async with session.get(url) as results:
+                return json.loads(await results.text())
 
     while True:
         all_es_data = await fetch_all_es_data()
@@ -155,13 +156,13 @@ def hawk_auth_header(key_id, secret_key, url, method, content, content_type):
 
 async def get(url, auth, x_forwarded_for, body):
     async with aiohttp.ClientSession() as session:
-        result = await session.get(url, headers={
+        async with session.get(url, headers={
             'Authorization': auth,
             'Content-Type': 'application/json',
             'X-Forwarded-For': x_forwarded_for,
             'X-Forwarded-Proto': 'http',
-        }, data=body, timeout=3)
-        text = await result.text()
+        }, data=body, timeout=3) as result:
+            text = await result.text()
     return (text, result.status, result.headers)
 
 
